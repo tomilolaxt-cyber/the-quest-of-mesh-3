@@ -1,0 +1,73 @@
+*{margin:0;padding:0;box-sizing:border-box}
+body{overflow:hidden;background:#000;font-family:'Segoe UI',sans-serif;color:#fff;user-select:none}
+canvas#game{position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:0}
+.screen{position:fixed;inset:0;z-index:500;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.screen.hidden{display:none}
+
+/* Auth */
+#auth{background:linear-gradient(180deg,#050510,#0f0828,#050510)}
+#auth h1{font-size:44px;font-weight:900;color:#00ccff;text-shadow:0 0 30px rgba(0,200,255,.5);margin-bottom:6px}
+.sub{color:#668;font-size:13px;font-style:italic;margin-bottom:24px}
+.auth-box{width:300px;background:rgba(255,255,255,.03);border:1px solid #333;border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:10px}
+.auth-tabs{display:flex;gap:0;margin-bottom:6px}
+.tab{flex:1;padding:8px;background:transparent;border:none;color:#666;font-size:12px;font-weight:700;cursor:pointer;border-bottom:2px solid transparent}
+.tab.active{color:#00ccff;border-bottom-color:#00ccff}
+.auth-box input{padding:10px;background:rgba(255,255,255,.05);border:1px solid #444;border-radius:6px;color:#fff;font-size:13px}
+.auth-box input:focus{border-color:#00ccff;outline:none}
+#auth-err{color:#f44;font-size:11px;min-height:14px}
+.btn{padding:12px 40px;font-size:16px;background:linear-gradient(135deg,#00ccff,#0088cc);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700}
+.btn:hover{transform:scale(1.04);box-shadow:0 0 20px rgba(0,200,255,.4)}
+
+/* Avatar */
+#avatar-screen{background:#080818}
+#avatar-screen h2{color:#00ccff;margin-bottom:12px;font-size:24px}
+.av-options{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;max-width:600px;margin-bottom:14px}
+.av-cat{background:rgba(255,255,255,.03);border:1px solid #333;border-radius:8px;padding:10px;min-width:130px}
+.av-cat h3{font-size:9px;color:#00ccff;margin-bottom:5px;text-transform:uppercase}
+.av-row{display:flex;gap:5px;flex-wrap:wrap}
+.av-color{width:26px;height:26px;border-radius:50%;border:2px solid #444;cursor:pointer}
+.av-color:hover,.av-color.sel{border-color:#00ccff;transform:scale(1.15)}
+.av-text{padding:3px 8px;border-radius:4px;border:1px solid #444;background:rgba(255,255,255,.03);color:#aaa;cursor:pointer;font-size:10px}
+.av-text:hover,.av-text.sel{border-color:#00ccff;color:#00ccff}
+
+/* HUD */
+#hud{position:fixed;top:0;left:0;right:0;padding:8px 14px;pointer-events:none;z-index:100;display:none}
+.hud-bars{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.bar-label{font-size:9px;font-weight:700;color:#888}
+.bar-bg{width:130px;height:6px;background:rgba(0,0,0,.6);border-radius:3px;overflow:hidden;border:1px solid #333}
+.bar-bg.sp{width:80px}.bar-bg.ce{width:80px}
+#hp-bar{height:100%;width:100%;background:linear-gradient(90deg,#00ccff,#0088ff);transition:width .2s}
+#sp-bar{height:100%;width:100%;background:linear-gradient(90deg,#44ff88,#00cc66);transition:width .2s}
+#ce-bar{height:100%;width:0%;background:linear-gradient(90deg,#aa00ff,#ff00aa);transition:width .2s}
+#hud-info{font-size:10px;color:#bbb;margin-top:3px;text-shadow:1px 1px 2px #000}
+#quest-box{position:fixed;top:8px;right:12px;background:rgba(0,0,0,.75);border-left:3px solid #00ccff;padding:7px 10px;border-radius:0 6px 6px 0;font-size:10px;max-width:200px}
+#combo-counter{position:fixed;top:45px;right:12px;font-size:26px;font-weight:900;color:#00ccff;text-shadow:0 0 10px rgba(0,200,255,.6);opacity:0;transition:opacity .2s}
+#pvp-indicator{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);font-size:10px;color:#666;display:none}
+
+/* Dialogue */
+#dialogue-box{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);width:500px;max-width:90vw;background:rgba(5,5,15,.95);border:2px solid #00ccff;border-radius:10px;padding:12px;z-index:200;display:none;pointer-events:all}
+#dlg-portrait{width:44px;height:44px;border-radius:50%;background:#222;border:2px solid #00ccff;float:left;margin-right:10px;display:flex;align-items:center;justify-content:center;font-size:20px}
+#dlg-name{font-size:11px;color:#00ccff;font-weight:700;margin-bottom:2px}
+#dlg-text{font-size:12px;color:#ddd;line-height:1.5}
+#dlg-skip{clear:both;text-align:right;font-size:9px;color:#444;margin-top:4px}
+
+/* Panels */
+#shop-panel,#pvp-panel{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:380px;max-width:90vw;max-height:80vh;background:rgba(5,5,15,.97);border:2px solid #00ccff;border-radius:12px;padding:16px;z-index:280;display:none;overflow-y:auto;pointer-events:all}
+#shop-panel h2,#pvp-panel h2{color:#00ccff;text-align:center;font-size:18px;margin-bottom:4px}
+.shop-cash{text-align:center;color:#4f4;font-size:12px;margin-bottom:10px}
+.shop-item,.pvp-opp{background:rgba(255,255,255,.03);border:1px solid #333;border-radius:6px;padding:8px 10px;margin-bottom:5px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;transition:all .15s}
+.shop-item:hover,.pvp-opp:hover{border-color:#00ccff;background:rgba(0,200,255,.05)}
+.si-name,.opp-name{font-size:12px;font-weight:700}
+.si-desc,.opp-stats{font-size:9px;color:#888}
+.si-price{color:#4f4;font-weight:700;font-size:12px}
+.panel-close{text-align:center;margin-top:8px;padding:6px;color:#00ccff;border:1px solid #00ccff;border-radius:5px;cursor:pointer;font-size:10px}
+.panel-close:hover{background:rgba(0,200,255,.1)}
+
+/* Notifications */
+#notif{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.93);border:2px solid #00ccff;border-radius:10px;padding:16px 30px;text-align:center;z-index:300;display:none;animation:npop .3s ease}
+#notif h2{color:#00ccff;font-size:18px;margin-bottom:4px}
+#notif p{color:#ccc;font-size:11px}
+@keyframes npop{from{transform:translate(-50%,-50%) scale(.85);opacity:0}to{transform:translate(-50%,-50%) scale(1);opacity:1}}
+#msgs{position:fixed;bottom:60px;left:50%;transform:translateX(-50%);z-index:150;pointer-events:none;text-align:center}
+.mg{font-size:12px;color:#00ccff;text-shadow:1px 1px 2px #000;animation:mfade 2.5s forwards}
+@keyframes mfade{0%{opacity:0;transform:translateY(6px)}10%{opacity:1;transform:translateY(0)}80%{opacity:1}100%{opacity:0}}

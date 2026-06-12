@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Quest of Mesh 3 - Open World</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<!-- AUTH SCREEN -->
+<div id="auth" class="screen">
+    <h1>THE QUEST OF MESH 3</h1>
+    <p class="sub">Open World. Online. PVP. The Mesh awaits.</p>
+    <div class="auth-box" id="auth-box">
+        <div class="auth-tabs">
+            <button class="tab active" id="tab-login" onclick="Game.authTab('login')">LOG IN</button>
+            <button class="tab" id="tab-reg" onclick="Game.authTab('register')">CREATE ACCOUNT</button>
+        </div>
+        <input type="text" id="auth-user" placeholder="Username" autocomplete="off">
+        <input type="password" id="auth-pass" placeholder="Password" autocomplete="off">
+        <div id="auth-err"></div>
+        <button class="btn" id="auth-btn" onclick="Game.authSubmit()">LOG IN</button>
+    </div>
+</div>
+
+<!-- AVATAR CREATOR -->
+<div id="avatar-screen" class="screen hidden">
+    <h2>CREATE YOUR CHARACTER</h2>
+    <canvas id="av-preview" width="160" height="240"></canvas>
+    <div class="av-options" id="av-options"></div>
+    <button class="btn" onclick="Game.finishAvatar()">ENTER THE WORLD</button>
+</div>
+
+<!-- HUD -->
+<div id="hud">
+    <div class="hud-bars">
+        <div class="bar-label">HP</div><div class="bar-bg"><div id="hp-bar"></div></div>
+        <div class="bar-label">SP</div><div class="bar-bg sp"><div id="sp-bar"></div></div>
+        <div class="bar-label">CE</div><div class="bar-bg ce"><div id="ce-bar"></div></div>
+    </div>
+    <div id="hud-info"></div>
+    <div id="quest-box"></div>
+    <div id="combo-counter"></div>
+    <div id="pvp-indicator"></div>
+</div>
+
+<!-- DIALOGUE -->
+<div id="dialogue-box">
+    <div id="dlg-portrait"></div>
+    <div id="dlg-content"><div id="dlg-name"></div><div id="dlg-text"></div></div>
+    <div id="dlg-skip">[ Space ]</div>
+</div>
+
+<!-- SHOP / PVP PANELS -->
+<div id="shop-panel"></div>
+<div id="pvp-panel"></div>
+
+<!-- NOTIFICATIONS -->
+<div id="notif"><h2></h2><p></p></div>
+<div id="msgs"></div>
+
+<script src="game.js"></script>
+</body>
+</html>
