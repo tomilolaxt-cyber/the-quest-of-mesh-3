@@ -1,0 +1,12 @@
+{
+  "name": "quest-of-mesh-3",
+  "version": "1.0.0",
+  "description": "Quest of Mesh 3 - Multiplayer",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  }
+}

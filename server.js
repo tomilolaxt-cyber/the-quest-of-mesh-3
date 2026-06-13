@@ -1,0 +1,206 @@
+/**
+ * Quest of Mesh 3 - Multiplayer WebSocket Server (Node.js)
+ * Modes: RANDOM, AI, FRIEND
+ * Roles: FIGHTER vs MESH MASTER
+ */
+
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const WebSocket = require('ws');
+
+const PORT = process.env.PORT || 6902;
+const PUBLIC = path.join(__dirname, 'public');
+
+// === HTTP SERVER (serves game files) ===
+const server = http.createServer((req, res) => {
+    let filePath = path.join(PUBLIC, req.url === '/' ? 'index.html' : req.url);
+    let ext = path.extname(filePath);
+    let contentType = { '.html': 'text/html', '.css': 'text/css', '.js': 'application/javascript', '.png': 'image/png' }[ext] || 'text/plain';
+
+    fs.readFile(filePath, (err, data) => {
+        if (err) { res.writeHead(404); res.end('Not found'); return; }
+        res.writeHead(200, { 'Content-Type': contentType });
+        res.end(data);
+    });
+});
+
+// === WEBSOCKET SERVER ===
+const wss = new WebSocket.Server({ server });
+
+let waitingPlayers = [];
+let rooms = {};
+let playerNames = new Map(); // ws -> username
+let playerWS = new Map();   // username -> ws
+let roomCounter = 0;
+
+wss.on('connection', (ws) => {
+    let username = null;
+    let roomId = null;
+
+    ws.on('message', (raw) => {
+        let data;
+        try { data = JSON.parse(raw); } catch { return; }
+        const action = data.action;
+
+        if (action === 'register') {
+            username = data.username || 'Player';
+            playerNames.set(ws, username);
+            playerWS.set(username, ws);
+            ws.send(JSON.stringify({ type: 'registered', username }));
+            console.log(`[+] ${username} connected`);
+        }
+
+        else if (action === 'find_random') {
+            if (!waitingPlayers.includes(ws)) {
+                waitingPlayers.push(ws);
+                ws.send(JSON.stringify({ type: 'waiting', msg: 'Looking for opponent...' }));
+            }
+            if (waitingPlayers.length >= 2) {
+                const p1 = waitingPlayers.shift();
+                const p2 = waitingPlayers.shift();
+                roomId = createRoom(p1, p2);
+            }
+        }
+
+        else if (action === 'find_friend') {
+            const target = data.target || '';
+            if (playerWS.has(target)) {
+                roomId = createRoom(ws, playerWS.get(target));
+            } else {
+                ws.send(JSON.stringify({ type: 'error', msg: `'${target}' not found or offline` }));
+            }
+        }
+
+        else if (action === 'play_ai') {
+            roomId = createAIRoom(ws);
+        }
+
+        else if (action === 'fighter_update') {
+            if (roomId && rooms[roomId]) {
+                const room = rooms[roomId];
+                room.fighterState = data.state || {};
+                sendTo(room.master, { type: 'fighter_state', state: room.fighterState });
+            }
+        }
+
+        else if (action === 'master_spawn') {
+            if (roomId && rooms[roomId]) {
+                const room = rooms[roomId];
+                const cost = data.cost || 20;
+                if (room.masterPoints >= cost) {
+                    room.masterPoints -= cost;
+                    broadcast(room, { type: 'enemy_spawned', enemy: data.enemy, master_points: room.masterPoints });
+                }
+            }
+        }
+
+        else if (action === 'master_ability') {
+            if (roomId && rooms[roomId]) {
+                const room = rooms[roomId];
+                const cost = data.cost || 30;
+                if (room.masterPoints >= cost) {
+                    room.masterPoints -= cost;
+                    broadcast(room, { type: 'master_ability', ability: data.ability, master_points: room.masterPoints });
+                }
+            }
+        }
+
+        else if (action === 'fighter_hit') {
+            if (roomId && rooms[roomId]) {
+                sendTo(rooms[roomId].master, { type: 'enemy_hit', index: data.index, damage: data.damage });
+            }
+        }
+
+        else if (action === 'enemy_attack') {
+            if (roomId && rooms[roomId]) {
+                sendTo(rooms[roomId].fighter, { type: 'take_damage', damage: data.damage || 10 });
+            }
+        }
+    });
+
+    ws.on('close', () => {
+        waitingPlayers = waitingPlayers.filter(p => p !== ws);
+        if (username) { playerWS.delete(username); console.log(`[-] ${username} left`); }
+        playerNames.delete(ws);
+        if (roomId && rooms[roomId]) {
+            broadcast(rooms[roomId], { type: 'opponent_left', msg: 'Opponent disconnected' });
+            clearInterval(rooms[roomId].regenInterval);
+            if (rooms[roomId].aiInterval) clearInterval(rooms[roomId].aiInterval);
+            delete rooms[roomId];
+        }
+    });
+});
+
+function createRoom(p1, p2) {
+    roomCounter++;
+    const rid = 'room_' + roomCounter;
+    const p1Name = playerNames.get(p1) || 'Fighter';
+    const p2Name = playerNames.get(p2) || 'Mesh Master';
+
+    const room = { fighter: p1, master: p2, fighterState: {}, masterPoints: 100, regenInterval: null };
+    rooms[rid] = room;
+
+    sendTo(p1, { type: 'game_start', role: 'fighter', opponent: p2Name, room: rid });
+    sendTo(p2, { type: 'game_start', role: 'master', opponent: p1Name, room: rid });
+
+    // Regen master points
+    room.regenInterval = setInterval(() => {
+        if (!rooms[rid]) return;
+        room.masterPoints = Math.min(200, room.masterPoints + 5);
+        sendTo(room.master, { type: 'points_update', points: room.masterPoints });
+    }, 1000);
+
+    console.log(`[GAME] ${p1Name} vs ${p2Name}`);
+    return rid;
+}
+
+function createAIRoom(ws) {
+    roomCounter++;
+    const rid = 'ai_' + roomCounter;
+    const name = playerNames.get(ws) || 'Player';
+
+    const room = { fighter: ws, master: null, fighterState: { x: 100 }, masterPoints: 999, regenInterval: null, aiInterval: null };
+    rooms[rid] = room;
+
+    sendTo(ws, { type: 'game_start', role: 'fighter', opponent: 'AI Mesh Master', room: rid });
+
+    // AI spawns enemies
+    let wave = 0;
+    room.aiInterval = setInterval(() => {
+        if (!rooms[rid]) return;
+        wave++;
+        const num = Math.min(3 + wave, 8);
+        for (let i = 0; i < num; i++) {
+            const enemy = {
+                x: (room.fighterState.x || 100) + 200 + i * 70,
+                y: 0, hp: 40 + wave * 12, dmg: 4 + wave * 2, speed: 70 + wave * 8,
+                type: ['grunt', 'fast', 'tank'][i % 3]
+            };
+            sendTo(ws, { type: 'enemy_spawned', enemy, wave });
+        }
+    }, 10000);
+
+    console.log(`[AI] ${name} vs AI`);
+    return rid;
+}
+
+function sendTo(ws, msg) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(msg));
+    }
+}
+
+function broadcast(room, msg) {
+    sendTo(room.fighter, msg);
+    sendTo(room.master, msg);
+}
+
+// === START ===
+server.listen(PORT, () => {
+    console.log('='.repeat(50));
+    console.log('  QUEST OF MESH 3 - Multiplayer Server');
+    console.log(`  http://localhost:${PORT}`);
+    console.log(`  WebSocket on same port (upgrade)`);
+    console.log('='.repeat(50));
+});
