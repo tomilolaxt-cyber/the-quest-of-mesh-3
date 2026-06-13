@@ -224,9 +224,70 @@ function closeDlg(){dlgOpen=false;document.getElementById('dialogue-box').style.
 // === MISSIONS ===
 function compMission(){var m=missions[curMission];if(!m||m.done)return;m.done=true;P.xp+=40;P.money+=150;notify('✅ COMPLETE',m.t);curMission++;checkpoint={x:P.x,y:P.y};checkLv();updHUD();updQuest();saveProgress();}
 
-// === PVP (press 9) ===
-function togglePVP(){pvpOpen=!pvpOpen;var el=document.getElementById('pvp-panel');if(pvpOpen){el.style.display='block';el.innerHTML='<h2>⚔️ PVP ARENA</h2><p style="color:#888;font-size:11px;text-align:center">Loading opponents...</p>';fetch('/api/pvp-opponents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:username})}).then(function(r){return r.json();}).then(function(d){if(!d.ok)return;var html='<h2>⚔️ PVP ARENA</h2><p style="color:#888;font-size:11px;text-align:center;margin-bottom:10px">Fight other players\' stats</p>';if(d.opponents.length===0)html+='<p style="color:#666;text-align:center">No opponents yet. Tell friends to sign up!</p>';d.opponents.forEach(function(o,i){html+='<div class="pvp-opp" onclick="Game.pvpFight('+i+')"><div><div class="opp-name">'+o.name+'</div><div class="opp-stats">Lv.'+o.level+' | '+o.pvp_wins+' wins</div></div><div style="color:#00ccff;font-size:11px">FIGHT</div></div>';});html+='<div class="panel-close" onclick="Game.togglePVP()">[ Close - 9 ]</div>';el.innerHTML=html;}).catch(function(){el.innerHTML='<h2>PVP</h2><p style="color:#f44;text-align:center">Server error</p><div class="panel-close" onclick="Game.togglePVP()">Close</div>';});}else{el.style.display='none';}}
-function pvpFight(i){pvpOpen=false;document.getElementById('pvp-panel').style.display='none';var oppLv=5+Math.floor(Math.random()*10);var oppHp=100+oppLv*20;var yourDmg=weapons[P.weapon].d*3+P.lv*5;var oppDmg=oppLv*8;var rounds=0;while(oppHp>0&&P.hp>0&&rounds<20){oppHp-=yourDmg;P.hp-=Math.max(0,oppDmg-P.lv*2);rounds++;}if(oppHp<=0){P.money+=300+oppLv*50;P.xp+=50;notify('🏆 PVP WIN','+$'+(300+oppLv*50));account.pvp_wins=(account.pvp_wins||0)+1;}else{notify('💀 PVP LOSS','Train harder!');account.pvp_losses=(account.pvp_losses||0)+1;}if(P.hp<=0)P.hp=30;checkLv();updHUD();saveProgress();}
+// === PVP (press 9) — Server Browser + Arena ===
+var pvpServer = '';
+var pvpState = 'servers'; // 'servers' or 'arena'
+
+function togglePVP(){
+    pvpOpen=!pvpOpen;
+    var el=document.getElementById('pvp-panel');
+    if(pvpOpen){el.style.display='block';pvpState='servers';showServerBrowser();}
+    else{el.style.display='none';}
+}
+
+function showServerBrowser(){
+    var el=document.getElementById('pvp-panel');
+    var servers=['Mesh City','Shadow Realm','Blood Arena','Neon District','The Void'];
+    var html='<h2>⚔️ PVP SERVERS</h2><p style="color:#888;font-size:10px;text-align:center;margin-bottom:10px">Choose a server to fight in</p>';
+    servers.forEach(function(s){
+        html+='<div class="pvp-opp" onclick="Game.joinServer(\''+s+'\')"><div><div class="opp-name">'+s+'</div><div class="opp-stats">Players online</div></div><div style="color:#00ccff;font-size:11px">JOIN</div></div>';
+    });
+    html+='<div class="panel-close" onclick="Game.togglePVP()">[ Close - 9 ]</div>';
+    el.innerHTML=html;
+}
+
+function joinServer(server){
+    pvpServer=server;pvpState='arena';
+    var el=document.getElementById('pvp-panel');
+    el.innerHTML='<h2>⚔️ '+server.toUpperCase()+'</h2><p style="color:#888;font-size:10px;text-align:center">Loading fighters...</p>';
+    fetch('/api/pvp-opponents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:username,server:server})}).then(function(r){return r.json();}).then(function(d){
+        var html='<h2>⚔️ '+server.toUpperCase()+'</h2><p style="color:#44ff88;font-size:10px;text-align:center;margin-bottom:10px">Server: '+server+'</p>';
+        if(!d.ok||d.opponents.length===0){html+='<p style="color:#666;text-align:center;font-size:11px">No opponents yet. Tell friends to join this server!</p>';}
+        else{d.opponents.forEach(function(o,i){html+='<div class="pvp-opp" onclick="Game.pvpFight(\''+o.name+'\','+o.level+','+o.pvp_wins+')"><div><div class="opp-name">'+o.name+'</div><div class="opp-stats">Lv.'+o.level+' | '+o.pvp_wins+' wins | '+o.kills+' kills</div></div><div style="color:#ff4444;font-size:11px">⚔️ FIGHT</div></div>';});}
+        html+='<div class="pvp-opp" onclick="Game.showServerBrowser()" style="border-color:#444"><div><div class="opp-name" style="color:#888">← Back to servers</div></div></div>';
+        html+='<div class="panel-close" onclick="Game.togglePVP()">[ Close - 9 ]</div>';
+        el.innerHTML=html;
+    }).catch(function(){el.innerHTML='<h2>PVP</h2><p style="color:#f44;text-align:center">Server error</p><div class="panel-close" onclick="Game.togglePVP()">Close</div>';});
+}
+
+function pvpFight(oppName, oppLv, oppWins){
+    pvpOpen=false;document.getElementById('pvp-panel').style.display='none';
+    var oppHp = 100 + oppLv * 25;
+    var yourDmg = weapons[P.weapon].d * 2 + P.lv * 4;
+    var oppDmg = oppLv * 6 + oppWins;
+    var rounds = 0;
+    notify('⚔️ VS ' + oppName, 'FIGHT!');
+    // Simulate turn-based
+    while(oppHp > 0 && P.hp > 0 && rounds < 25){
+        oppHp -= yourDmg + Math.floor(Math.random() * 20);
+        var incoming = Math.max(0, oppDmg - P.lv * 2 + Math.floor(Math.random() * 10));
+        P.hp -= incoming;
+        rounds++;
+    }
+    if(oppHp <= 0){
+        var reward = 200 + oppLv * 40;
+        P.money += reward; P.xp += 40;
+        notify('🏆 YOU WIN vs ' + oppName, '+$' + reward + ' | Server: ' + pvpServer);
+        account.pvp_wins = (account.pvp_wins||0) + 1;
+        msg('Defeated ' + oppName + ' in ' + rounds + ' rounds!');
+    } else {
+        notify('💀 LOST to ' + oppName, 'Train harder!');
+        account.pvp_losses = (account.pvp_losses||0) + 1;
+        msg(oppName + ' won after ' + rounds + ' rounds.');
+    }
+    if(P.hp <= 0) P.hp = 30;
+    checkLv(); updHUD(); saveProgress();
+}
 
 // === MODE / SHOP / JOBS ===
 function toggleMode(){if(gameMode==='story'){gameMode='free';P.x=4000+Math.random()*500;P.y=0;P.vy=0;notify('🌃 FREE ROAM','Explore. U = back.');msg('FREE ROAM. B=shop, E=interact.');}else{gameMode='story';var m=missions[curMission];if(m&&m.npc){for(var i=0;i<npcs.length;i++){if(npcs[i].name===m.npc){P.x=npcs[i].x-60;break;}}}P.y=0;P.vy=0;notify('⚔️ STORY','Back to quest.');msg('STORY MODE.');}updHUD();updQuest();}
@@ -281,5 +342,5 @@ function loop(){var now=performance.now();dt=Math.min((now-lastTime)/1000,0.05);
 
 // === PUBLIC ===
 init();
-return{start:function(){},authTab:authTab,authSubmit:authSubmit,finishAvatar:finishAvatar,toggleShop:toggleShop,buy:buy,togglePVP:togglePVP,pvpFight:pvpFight};
+return{start:function(){},authTab:authTab,authSubmit:authSubmit,finishAvatar:finishAvatar,toggleShop:toggleShop,buy:buy,togglePVP:togglePVP,pvpFight:pvpFight,joinServer:joinServer,showServerBrowser:showServerBrowser};
 })();
