@@ -12,8 +12,56 @@ const WebSocket = require('ws');
 const PORT = process.env.PORT || 6902;
 const PUBLIC = path.join(__dirname, 'public');
 
-// === HTTP SERVER (serves game files) ===
+// === ACCOUNTS ===
+const ACCOUNTS_FILE = path.join(__dirname, 'accounts.json');
+function loadAccounts() { try { return JSON.parse(fs.readFileSync(ACCOUNTS_FILE, 'utf8')); } catch { return {}; } }
+function saveAccounts(a) { fs.writeFileSync(ACCOUNTS_FILE, JSON.stringify(a, null, 2)); }
+
+// === HTTP SERVER (serves game files + auth API) ===
 const server = http.createServer((req, res) => {
+    // API routes
+    if (req.method === 'POST' && req.url.startsWith('/api/')) {
+        let body = '';
+        req.on('data', c => body += c);
+        req.on('end', () => {
+            let data = {}; try { data = JSON.parse(body); } catch {}
+            res.setHeader('Content-Type', 'application/json');
+            res.setHeader('Access-Control-Allow-Origin', '*');
+
+            if (req.url === '/api/register') {
+                const u = (data.username || '').trim(), p = (data.password || '').trim();
+                if (!u || !p || u.length < 2) { res.end(JSON.stringify({ok:false,err:'Username 2+ chars and password required'})); return; }
+                const accs = loadAccounts();
+                if (accs[u]) { res.end(JSON.stringify({ok:false,err:'Username taken'})); return; }
+                accs[u] = { pw: p, avatar: data.avatar || {}, lv: 1, money: 3000, xp: 0, pvp_wins: 0, pvp_losses: 0, world: 0 };
+                saveAccounts(accs);
+                res.end(JSON.stringify({ok:true,account:accs[u],username:u}));
+            }
+            else if (req.url === '/api/login') {
+                const u = (data.username || '').trim(), p = (data.password || '').trim();
+                const accs = loadAccounts();
+                if (!accs[u]) { res.end(JSON.stringify({ok:false,err:'Account not found'})); return; }
+                if (accs[u].pw !== p) { res.end(JSON.stringify({ok:false,err:'Wrong password'})); return; }
+                res.end(JSON.stringify({ok:true,account:accs[u],username:u}));
+            }
+            else if (req.url === '/api/save') {
+                const u = data.username || '';
+                const accs = loadAccounts();
+                if (accs[u]) { Object.assign(accs[u], {lv:data.lv,money:data.money,xp:data.xp,pvp_wins:data.pvp_wins||0,pvp_losses:data.pvp_losses||0,world:data.world||0,avatar:data.avatar||accs[u].avatar}); saveAccounts(accs); res.end(JSON.stringify({ok:true})); }
+                else res.end(JSON.stringify({ok:false}));
+            }
+            else if (req.url === '/api/pvp-list') {
+                const accs = loadAccounts();
+                const me = data.username || '';
+                const list = Object.entries(accs).filter(([k])=>k!==me).map(([k,v])=>({name:k,lv:v.lv||1,wins:v.pvp_wins||0})).sort((a,b)=>b.lv-a.lv).slice(0,10);
+                res.end(JSON.stringify({ok:true,players:list}));
+            }
+            else { res.writeHead(404); res.end('{}'); }
+        });
+        return;
+    }
+    if (req.method === 'OPTIONS') { res.setHeader('Access-Control-Allow-Origin','*'); res.setHeader('Access-Control-Allow-Methods','POST,GET,OPTIONS'); res.setHeader('Access-Control-Allow-Headers','Content-Type'); res.writeHead(200); res.end(); return; }
+
     let filePath = path.join(PUBLIC, req.url === '/' ? 'index.html' : req.url);
     let ext = path.extname(filePath);
     let contentType = { '.html': 'text/html', '.css': 'text/css', '.js': 'application/javascript', '.png': 'image/png' }[ext] || 'text/plain';

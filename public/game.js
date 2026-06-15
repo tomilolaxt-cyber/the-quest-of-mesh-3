@@ -1,11 +1,12 @@
 // ============================================================
 // QUEST OF MESH 3 — RULER OF WORLDS
-// Colorful multiverse, avatar creator, Mesh powers, portals
+// Sign-in, Gamepad, PVP, Colorful multiverse, Mesh powers
 // ============================================================
 var Game=(function(){
 var canvas,ctx,W,H,cam={x:0,y:0},time=0,dt=0,lt=0;
-var keys={},phase='title',combo=0,ct=0,shopOpen=false,dlgOpen=false;
+var keys={},phase='title',combo=0,ct=0,shopOpen=false,dlgOpen=false,pvpOpen=false;
 var dashCd=0,atkCd=0,specCd=0,domCd=0,domActive=false,domT=0,inv=0;
+var username='',wsConn=null;
 
 // WORLDS
 var worlds=[
@@ -72,6 +73,76 @@ function onKey(c){
     if(c==='Digit1')P.weapon=(P.weapon+1)%weapons.length;
     if(c==='Digit2')P.weapon=(P.weapon-1+weapons.length)%weapons.length;
     if(c==='KeyV')meshBlast();
+    if(c==='Digit9')togglePVP();
+}
+
+// === AUTH ===
+function login(){
+    var u=document.getElementById('login-user').value.trim(),p=document.getElementById('login-pass').value.trim();
+    if(!u||!p){document.getElementById('login-err').textContent='Fill both fields';return;}
+    fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})}).then(r=>r.json()).then(d=>{
+        if(!d.ok){document.getElementById('login-err').textContent=d.err;return;}
+        username=d.username;P.lv=d.account.lv||1;P.money=d.account.money||3000;P.xp=d.account.xp||0;curWorld=d.account.world||0;
+        if(d.account.avatar)Object.assign(avatar,d.account.avatar);
+        document.getElementById('title').classList.add('hidden');document.getElementById('avatar-screen').classList.remove('hidden');buildAvUI();
+    }).catch(()=>{document.getElementById('login-err').textContent='Server error';});
+}
+function register(){
+    var u=document.getElementById('login-user').value.trim(),p=document.getElementById('login-pass').value.trim();
+    if(!u||!p||u.length<2){document.getElementById('login-err').textContent='Username 2+ chars + password';return;}
+    fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p,avatar:avatar})}).then(r=>r.json()).then(d=>{
+        if(!d.ok){document.getElementById('login-err').textContent=d.err;return;}
+        username=d.username;
+        document.getElementById('title').classList.add('hidden');document.getElementById('avatar-screen').classList.remove('hidden');buildAvUI();
+    }).catch(()=>{document.getElementById('login-err').textContent='Server error';});
+}
+function saveGame(){if(!username)return;fetch('/api/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:username,lv:P.lv,money:P.money,xp:P.xp,world:curWorld,avatar:avatar})}).catch(()=>{});}
+
+// === GAMEPAD (PS5/PS4) ===
+function pollGamepad(){
+    var gps=navigator.getGamepads();if(!gps)return;
+    var gp=null;for(var i=0;i<gps.length;i++){if(gps[i]){gp=gps[i];break;}}
+    if(!gp)return;
+    var dz=0.2;
+    // Left stick = movement
+    if(gp.axes[0]<-dz)keys['KeyA']=true;else if(!keys['ArrowLeft'])keys['KeyA']=false;
+    if(gp.axes[0]>dz)keys['KeyD']=true;else if(!keys['ArrowRight'])keys['KeyD']=false;
+    // X/A = Jump
+    if(gp.buttons[0]&&gp.buttons[0].pressed)keys['KeyW']=true;else keys['KeyW']=false;
+    // Square/X = Melee
+    if(gp.buttons[2]&&gp.buttons[2].pressed)keys['KeyF']=true;else keys['KeyF']=false;
+    // Triangle/Y = Special
+    if(gp.buttons[3]&&gp.buttons[3].pressed)keys['KeyK']=true;else keys['KeyK']=false;
+    // R1 = Shoot
+    if(gp.buttons[5]&&gp.buttons[5].pressed)keys['KeyL']=true;else keys['KeyL']=false;
+    // R2 = Dash
+    if(gp.buttons[7]&&gp.buttons[7].pressed)keys['Space']=true;else keys['Space']=false;
+    // L1 = Mesh Blast
+    if(gp.buttons[4]&&gp.buttons[4].pressed)meshBlast();
+    // D-pad up = weapon switch
+    if(gp.buttons[12]&&gp.buttons[12].pressed){P.weapon=(P.weapon+1)%weapons.length;}
+}
+
+// === PVP ===
+function togglePVP(){
+    pvpOpen=!pvpOpen;var el=document.getElementById('shop-panel');
+    if(pvpOpen){el.style.display='block';el.innerHTML='<h2>⚔️ PVP</h2><p style="color:#888;font-size:10px;text-align:center">Loading...</p>';
+        fetch('/api/pvp-list',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:username})}).then(r=>r.json()).then(d=>{
+            var h='<h2>⚔️ PVP ARENA</h2>';
+            if(!d.ok||!d.players.length)h+='<p style="color:#666;text-align:center;font-size:11px">No opponents yet</p>';
+            else d.players.forEach((o,i)=>{h+='<div class="sitem" onclick="Game.pvpFight(\''+o.name+'\','+o.lv+','+o.wins+')"><div><div class="sn">'+o.name+'</div><div class="sd">Lv.'+o.lv+' | '+o.wins+' wins</div></div><div class="sp2">⚔️</div></div>';});
+            h+='<div class="pclose" onclick="Game.closePVP()">Close [9]</div>';el.innerHTML=h;
+        }).catch(()=>{el.innerHTML='<h2>PVP</h2><p style="color:#f44;text-align:center">Error</p><div class="pclose" onclick="Game.closePVP()">Close</div>';});
+    }else el.style.display='none';
+}
+function closePVP(){pvpOpen=false;document.getElementById('shop-panel').style.display='none';}
+function pvpFight(name,lv,wins){
+    closePVP();
+    var oppHp=100+lv*25,yourDmg=weapons[P.weapon].d*2+P.lv*4,oppDmg=lv*6+wins,rounds=0;
+    while(oppHp>0&&P.hp>0&&rounds<25){oppHp-=yourDmg+Math.floor(Math.random()*15);P.hp-=Math.max(0,oppDmg-P.lv*2+Math.floor(Math.random()*8));rounds++;}
+    if(oppHp<=0){var r=200+lv*40;P.money+=r;P.xp+=40;notify('🏆 WIN vs '+name,'+$'+r);}
+    else{notify('💀 LOST to '+name,'Level up!');}
+    if(P.hp<=0)P.hp=30;chkLv();updHUD();saveGame();
 }
 
 // === AVATAR ===
@@ -180,7 +251,7 @@ function chkLv(){if(P.xp>=P.lv*60){P.xp-=P.lv*60;P.lv++;P.mhp+=20;P.hp=P.mhp;not
 function die(){P.hp=0;notify('💀 DIED','Respawning...');spawnP(P.x,P.y+26,'#ff0000',20,300);setTimeout(function(){P.hp=P.mhp;P.sp=P.msp;P.x=checkpoint.x;P.y=H-60-P.h;P.vy=0;P.grounded=true;inv=3;msg('Respawned. 3s shield.');updHUD();},1000);}
 
 // === MISSIONS ===
-function compM(){var ms=allMissions[curWorld];var m=ms[curMI];if(!m)return;curMI++;checkpoint={x:P.x};P.xp+=30;P.money+=200;notify('✅ '+m.t,'Complete!');chkLv();updHUD();updQuest();
+function compM(){var ms=allMissions[curWorld];var m=ms[curMI];if(!m)return;curMI++;checkpoint={x:P.x};P.xp+=30;P.money+=200;notify('✅ '+m.t,'Complete!');chkLv();updHUD();updQuest();saveGame();
     if(curMI>=ms.length){// World complete — go to next
         if(curWorld<worlds.length-1){setTimeout(function(){notify('🌀 PORTAL','Entering next world...');setTimeout(function(){loadWorld(curWorld+1);},1500);},1000);}
         else{notify('👑 YOU ARE THE MESH GOD','All worlds conquered. You rule everything.');msg('GAME COMPLETE. You are infinite.');}}}
@@ -233,8 +304,8 @@ function draw(){
 }
 
 // === LOOP ===
-function loop(){var now=performance.now();dt=Math.min((now-lt)/1000,.05);lt=now;time+=dt;update();draw();updHUD();requestAnimationFrame(loop);}
+function loop(){var now=performance.now();dt=Math.min((now-lt)/1000,.05);lt=now;time+=dt;pollGamepad();update();draw();updHUD();requestAnimationFrame(loop);}
 
 init();
-return{goAvatar:goAvatar,play:play,toggleShop:toggleShop,buy:buy};
+return{goAvatar:goAvatar,play:play,toggleShop:toggleShop,buy:buy,login:login,register:register,togglePVP:togglePVP,pvpFight:pvpFight,closePVP:closePVP};
 })();
