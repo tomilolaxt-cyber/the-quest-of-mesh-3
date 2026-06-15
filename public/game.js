@@ -99,28 +99,33 @@ function register(){
 function saveGame(){if(!username)return;fetch('/api/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:username,lv:P.lv,money:P.money,xp:P.xp,world:curWorld,avatar:avatar})}).catch(()=>{});}
 
 // === GAMEPAD (PS5/PS4) ===
+var gpActive=false;
 function pollGamepad(){
     var gps=navigator.getGamepads();if(!gps)return;
     var gp=null;for(var i=0;i<gps.length;i++){if(gps[i]){gp=gps[i];break;}}
     if(!gp)return;
-    var dz=0.2;
-    // Left stick = movement
-    if(gp.axes[0]<-dz)keys['KeyA']=true;else if(!keys['ArrowLeft'])keys['KeyA']=false;
-    if(gp.axes[0]>dz)keys['KeyD']=true;else if(!keys['ArrowRight'])keys['KeyD']=false;
-    // X/A = Jump
-    if(gp.buttons[0]&&gp.buttons[0].pressed)keys['KeyW']=true;else keys['KeyW']=false;
-    // Square/X = Melee
-    if(gp.buttons[2]&&gp.buttons[2].pressed)keys['KeyF']=true;else keys['KeyF']=false;
-    // Triangle/Y = Special
-    if(gp.buttons[3]&&gp.buttons[3].pressed)keys['KeyK']=true;else keys['KeyK']=false;
-    // R1 = Shoot
-    if(gp.buttons[5]&&gp.buttons[5].pressed)keys['KeyL']=true;else keys['KeyL']=false;
-    // R2 = Dash
-    if(gp.buttons[7]&&gp.buttons[7].pressed)keys['Space']=true;else keys['Space']=false;
-    // L1 = Mesh Blast
-    if(gp.buttons[4]&&gp.buttons[4].pressed)meshBlast();
-    // D-pad up = weapon switch
-    if(gp.buttons[12]&&gp.buttons[12].pressed){P.weapon=(P.weapon+1)%weapons.length;}
+    gpActive=true;
+    var dz=0.25;
+    // Left stick = movement (override keyboard, don't conflict)
+    if(gp.axes[0]<-dz){keys['_gpLeft']=true;keys['_gpRight']=false;}
+    else if(gp.axes[0]>dz){keys['_gpRight']=true;keys['_gpLeft']=false;}
+    else{keys['_gpLeft']=false;keys['_gpRight']=false;}
+    // X/A (button 0) = Jump
+    keys['_gpJump']=gp.buttons[0]&&gp.buttons[0].pressed;
+    // Square/X (button 2) = Melee
+    if(gp.buttons[2]&&gp.buttons[2].pressed&&atkCd<=0)melee();
+    // Triangle/Y (button 3) = Special
+    if(gp.buttons[3]&&gp.buttons[3].pressed&&specCd<=0&&P.sp>=30)special();
+    // R1 (button 5) = Shoot
+    if(gp.buttons[5]&&gp.buttons[5].pressed&&atkCd<=0)shoot();
+    // R2 (button 7) = Dash
+    keys['_gpDash']=gp.buttons[7]&&gp.buttons[7].pressed;
+    // L1 (button 4) = Mesh Blast
+    if(gp.buttons[4]&&gp.buttons[4].pressed&&!keys['_gpL1Last'])meshBlast();
+    keys['_gpL1Last']=gp.buttons[4]&&gp.buttons[4].pressed;
+    // D-pad up (button 12) = weapon switch
+    if(gp.buttons[12]&&gp.buttons[12].pressed&&!keys['_gpDU']){P.weapon=(P.weapon+1)%weapons.length;updHUD();}
+    keys['_gpDU']=gp.buttons[12]&&gp.buttons[12].pressed;
 }
 
 // === PVP ===
@@ -209,13 +214,13 @@ function mkE(x,wi){var hp=60+wi*20+Math.floor(Math.random()*30);var w=worlds[wi]
 // === UPDATE ===
 function update(){
     if(dlgOpen||shopOpen)return;
-    var mx=0;if(keys['KeyA']||keys['ArrowLeft']){mx=-1;P.facing=-1;}if(keys['KeyD']||keys['ArrowRight']){mx=1;P.facing=1;}
-    if(P.inV){var v=P.vr;v.x+=mx*v.spd*dt;P.x=v.x;P.y=v.y-18;if(keys['KeyW']||keys['ArrowUp']){P.inV=false;P.vr=null;P.vy=-300;}var m=allMissions[curWorld][curMI];if(m&&m.loc&&P.x>m.loc)compM();}
+    var mx=0;if(keys['KeyA']||keys['ArrowLeft']||keys['_gpLeft']){mx=-1;P.facing=-1;}if(keys['KeyD']||keys['ArrowRight']||keys['_gpRight']){mx=1;P.facing=1;}
+    if(P.inV){var v=P.vr;v.x+=mx*v.spd*dt;P.x=v.x;P.y=v.y-18;if(keys['KeyW']||keys['ArrowUp']||keys['_gpJump']){P.inV=false;P.vr=null;P.vy=-300;}var m=allMissions[curWorld][curMI];if(m&&m.loc&&P.x>m.loc)compM();}
     else{
         P.vx=mx*P.speed;
-        if(keys['Space']&&dashCd<=0&&P.sp>=12){P.dashing=true;P.dashT=0.14;P.vx=P.facing*800;P.sp-=12;dashCd=0.35;spawnP(P.x,P.y+26,worlds[curWorld].accent,6,140);}
+        if((keys['Space']||keys['_gpDash'])&&dashCd<=0&&P.sp>=12){P.dashing=true;P.dashT=0.14;P.vx=P.facing*800;P.sp-=12;dashCd=0.35;spawnP(P.x,P.y+26,worlds[curWorld].accent,6,140);}
         if(P.dashing){P.dashT-=dt;if(P.dashT<=0)P.dashing=false;}if(dashCd>0)dashCd-=dt;
-        if((keys['KeyW']||keys['ArrowUp'])&&P.grounded){P.vy=-600;P.grounded=false;}
+        if((keys['KeyW']||keys['ArrowUp']||keys['_gpJump'])&&P.grounded){P.vy=-600;P.grounded=false;}
         P.vy+=1500*dt;P.x+=P.vx*dt;P.y+=P.vy*dt;
         P.grounded=false;platforms.forEach(function(pl){if(P.x+P.w/2>pl.x&&P.x-P.w/2<pl.x+pl.w&&P.y+P.h>pl.y&&P.y+P.h<pl.y+22&&P.vy>0){P.y=pl.y-P.h;P.vy=0;P.grounded=true;}});
         if(P.y>H+200){P.y=H-60-P.h;P.vy=0;P.grounded=true;P.hp-=10;if(P.hp<=0)die();}
