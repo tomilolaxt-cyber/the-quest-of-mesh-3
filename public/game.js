@@ -77,7 +77,9 @@ function onKey(c){
 }
 
 // === AUTH / ROOM FLOW ===
-var roomCode='', mpMode=''; // 'host' or 'join'
+var roomCode='', mpMode='';
+var remotePlayer=null; // {x,y,facing,attacking,avatar:{},name:''}
+var posSendTimer=0;
 
 function goSolo(){
     var u=document.getElementById('login-user').value.trim();
@@ -143,14 +145,20 @@ function connectWS(onOpen){
         else if(d.type==='room_error'){
             document.getElementById('room-status').textContent='Error: '+d.msg;
         }
-        else if(d.type==='fighter_state'&&phase==='playing'){
-            // Update remote player position
+        else if(d.type==='player_pos'&&phase==='playing'){
+            // Update remote player's position
+            if(!remotePlayer)remotePlayer={x:200,y:0,facing:1,attacking:false,name:d.name||'Player 2',avatar:d.avatar||{}};
+            remotePlayer.x=d.x;remotePlayer.y=d.y;remotePlayer.facing=d.facing;remotePlayer.attacking=d.attacking;remotePlayer.name=d.name||remotePlayer.name;remotePlayer.avatar=d.avatar||remotePlayer.avatar;
+        }
+        else if(d.type==='player_attack'&&phase==='playing'){
+            // Remote player attacked — show effect near their position
+            if(remotePlayer)spawnP(remotePlayer.x+remotePlayer.facing*30,remotePlayer.y+25,'#ff44aa',5,80);
         }
         else if(d.type==='take_damage'&&phase==='playing'){
             P.hp-=d.damage;spawnP(P.x,P.y+20,'#ff4444',3,120);if(P.hp<=0)die();updHUD();
         }
         else if(d.type==='opponent_left'&&phase==='playing'){
-            msg('Opponent left the game');
+            remotePlayer=null;msg('Opponent left the game');
         }
     };
     wsConn.onerror=function(){document.getElementById('room-status').textContent='Connection error';};
@@ -312,10 +320,16 @@ function update(){
     portals.forEach(function(po){if(Math.abs(P.x-po.x)<35&&m&&m.loc&&P.x>m.loc-50)compM();});
     if(ct>0){ct-=dt;if(ct<=0)combo=0;}
     cam.x+=(P.x-W/2-cam.x)*5*dt;cam.y+=(P.y-H/2+70-cam.y)*3*dt;
+    // Send position to other player over WebSocket
+    posSendTimer+=dt;
+    if(posSendTimer>0.05&&wsConn&&wsConn.readyState===WebSocket.OPEN){
+        posSendTimer=0;
+        wsConn.send(JSON.stringify({action:'player_pos',x:Math.round(P.x),y:Math.round(P.y),facing:P.facing,attacking:P.attacking,name:username,avatar:avatar,room:roomCode}));
+    }
 }
 
 // === COMBAT ===
-function melee(){var w=weapons[P.weapon];if(w.t!=='melee'){P.weapon=0;w=weapons[0];}atkCd=w.s;P.attacking=true;setTimeout(function(){P.attacking=false;},100);spawnP(P.x+P.facing*28,P.y+24,w.c,5,90);enemies.forEach(function(e){if(!e.dead&&Math.abs(e.x-P.x)<w.r&&(e.x-P.x)*P.facing>-12&&Math.abs(e.y-P.y)<45)hitE(e,w.d);});}
+function melee(){var w=weapons[P.weapon];if(w.t!=='melee'){P.weapon=0;w=weapons[0];}atkCd=w.s;P.attacking=true;setTimeout(function(){P.attacking=false;},100);spawnP(P.x+P.facing*28,P.y+24,w.c,5,90);enemies.forEach(function(e){if(!e.dead&&Math.abs(e.x-P.x)<w.r&&(e.x-P.x)*P.facing>-12&&Math.abs(e.y-P.y)<45)hitE(e,w.d);});if(wsConn&&wsConn.readyState===WebSocket.OPEN)wsConn.send(JSON.stringify({action:'player_attack',room:roomCode}));}
 function shoot(){var w=weapons[P.weapon];if(w.t!=='gun'){P.weapon=3;w=weapons[3];}if(w.a<=0){atkCd=0.4;msg('No ammo!');return;}w.a--;atkCd=w.s;projectiles.push({x:P.x+P.facing*18,y:P.y+20,vx:P.facing*950,d:w.d,life:1.5,c:w.c});spawnP(P.x+P.facing*22,P.y+20,'#fff',2,120);}
 function special(){P.sp-=30;specCd=1;spawnP(P.x,P.y+20,worlds[curWorld].accent,18,280);enemies.forEach(function(e){if(!e.dead&&Math.abs(e.x-P.x)<170)hitE(e,100);});}
 function meshBlast(){if(P.mesh<50){msg('Need 50 Mesh Energy!');return;}P.mesh-=50;domActive=true;domT=2.5;domCd=12;notify('⚡ MESH BLAST','EVERYTHING DIES');enemies.forEach(function(e){if(!e.dead&&Math.abs(e.x-P.x)<600)hitE(e,300);});spawnP(P.x,P.y+20,'#ffaa00',50,400);}
@@ -343,6 +357,29 @@ function updCombo(){var el=document.getElementById('combo');el.textContent=combo
 function msg(t){var d=document.createElement('div');d.className='mg';d.textContent=t;document.getElementById('msgs').appendChild(d);setTimeout(function(){d.remove();},2500);}
 function notify(h,p){var n=document.getElementById('notif');n.querySelector('h2').textContent=h;n.querySelector('p').textContent=p;n.style.display='block';setTimeout(function(){n.style.display='none';},2500);}
 function spawnP(x,y,c,n,f){for(var i=0;i<n;i++)particles.push({x:x,y:y,vx:(Math.random()-.5)*f*2,vy:-Math.random()*f,life:0.4+Math.random()*0.3,c:c,sz:3+Math.random()*5});}
+
+function drawRemotePlayer(rp){
+    var av=rp.avatar||{};
+    var rpx=rp.x-15,rpy=rp.y;
+    var sk=av.skin?'#'+(av.skin).toString(16).padStart(6,'0'):'#c68642';
+    var hc=av.hairC?'#'+(av.hairC).toString(16).padStart(6,'0'):'#44ffaa';
+    var ocs={cyber:'#1a2a4a',royal:'#2a1a3a',shadow:'#2a1a1a',nature:'#1a2a1a',golden:'#2a2200'};
+    var oc=ocs[av.outfit]||'#1a2a4a';
+    // Glow ring to distinguish from local player
+    ctx.shadowBlur=8;ctx.shadowColor='#44ffaa';
+    ctx.fillStyle=oc;ctx.fillRect(rpx+5,rpy+16,20,24);
+    ctx.fillStyle=sk;ctx.beginPath();ctx.arc(rp.x,rpy+11,9,0,6.28);ctx.fill();
+    ctx.fillStyle=hc;
+    if(av.hair==='spiky'||!av.hair){ctx.beginPath();ctx.moveTo(rp.x-8,rpy+9);ctx.lineTo(rp.x-4,rpy-3);ctx.lineTo(rp.x,rpy+4);ctx.lineTo(rp.x+4,rpy-5);ctx.lineTo(rp.x+8,rpy+3);ctx.lineTo(rp.x+10,rpy+9);ctx.closePath();ctx.fill();}
+    else{ctx.beginPath();ctx.arc(rp.x,rpy+5,9,Math.PI,0);ctx.fill();}
+    ctx.fillStyle='#44ffaa';ctx.fillRect(rp.x+rp.facing*2.5-1.5,rpy+9,3,3.5);
+    ctx.fillStyle='#2a2a3a';ctx.fillRect(rpx+7,rpy+40,6,12);ctx.fillRect(rpx+17,rpy+40,6,12);
+    if(rp.attacking){ctx.fillStyle='#44ffaa';ctx.fillRect(rp.x+rp.facing*12,rpy+18,2.5*rp.facing,16);}
+    ctx.shadowBlur=0;
+    // Name tag above
+    ctx.fillStyle='#44ffaa';ctx.font='bold 8px sans-serif';ctx.textAlign='center';
+    ctx.fillText(rp.name||'P2',rp.x,rpy-6);
+}
 
 // === DRAW ===
 function draw(){
@@ -372,6 +409,8 @@ function draw(){
     ctx.shadowBlur=0;
     projectiles.forEach(function(p){ctx.fillStyle=p.c;ctx.shadowBlur=4;ctx.shadowColor=p.c;ctx.fillRect(p.x-3,p.y-1.5,6,3);});ctx.shadowBlur=0;
     particles.forEach(function(pt){ctx.globalAlpha=pt.life*2.5;ctx.fillStyle=pt.c;ctx.fillRect(pt.x-pt.sz/2,pt.y-pt.sz/2,pt.sz,pt.sz);});ctx.globalAlpha=1;
+    // Remote player
+    if(remotePlayer){drawRemotePlayer(remotePlayer);}
     ctx.restore();
     if(domActive){ctx.fillStyle=w.accent+'0f';ctx.fillRect(0,0,W,H);ctx.strokeStyle=w.accent+'66';ctx.lineWidth=3;ctx.setLineDash([6,4]);ctx.strokeRect(5,5,W-10,H-10);ctx.setLineDash([]);ctx.fillStyle=w.accent;ctx.font='bold 16px sans-serif';ctx.textAlign='center';ctx.globalAlpha=.5+Math.sin(time*5)*.3;ctx.fillText('⚡ MESH BLAST ⚡',W/2,32);ctx.globalAlpha=1;}
 }

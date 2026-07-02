@@ -128,6 +128,25 @@ wss.on('connection', (ws) => {
             console.log(`[ROOM] ${data.username} joined room ${code}`);
         }
 
+        else if (action === 'player_pos') {
+            // Relay position to the other player in the same room
+            const code = data.room || roomId;
+            const room = rooms[code];
+            if (room) {
+                const other = room.host === ws ? room.guest : room.host;
+                sendTo(other, { type: 'player_pos', x: data.x, y: data.y, facing: data.facing, attacking: data.attacking, name: data.name, avatar: data.avatar });
+            }
+        }
+
+        else if (action === 'player_attack') {
+            const code = data.room || roomId;
+            const room = rooms[code];
+            if (room) {
+                const other = room.host === ws ? room.guest : room.host;
+                sendTo(other, { type: 'player_attack' });
+            }
+        }
+
         else if (action === 'find_random') {
             if (!waitingPlayers.includes(ws)) {
                 waitingPlayers.push(ws);
