@@ -76,27 +76,95 @@ function onKey(c){
     if(c==='Digit9')togglePVP();
 }
 
-// === AUTH ===
-function login(){
-    var u=document.getElementById('login-user').value.trim(),p=document.getElementById('login-pass').value.trim();
-    if(!u||!p){document.getElementById('login-err').textContent='Fill both fields';return;}
-    fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})}).then(r=>r.json()).then(d=>{
-        if(!d.ok){document.getElementById('login-err').textContent=d.err;return;}
-        username=d.username;P.lv=d.account.lv||1;P.money=d.account.money||3000;P.xp=d.account.xp||0;curWorld=d.account.world||0;
-        if(d.account.avatar)Object.assign(avatar,d.account.avatar);
-        document.getElementById('title').classList.add('hidden');document.getElementById('avatar-screen').classList.remove('hidden');buildAvUI();
-    }).catch(()=>{document.getElementById('login-err').textContent='Server error';});
+// === AUTH / ROOM FLOW ===
+var roomCode='', mpMode=''; // 'host' or 'join'
+
+function goSolo(){
+    var u=document.getElementById('login-user').value.trim();
+    if(!u){document.getElementById('login-err').textContent='Enter your name first';return;}
+    username=u;
+    document.getElementById('title').classList.add('hidden');
+    document.getElementById('avatar-screen').classList.remove('hidden');
+    buildAvUI();
 }
-function register(){
-    var u=document.getElementById('login-user').value.trim(),p=document.getElementById('login-pass').value.trim();
-    if(!u||!p||u.length<2){document.getElementById('login-err').textContent='Username 2+ chars + password';return;}
-    fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p,avatar:avatar})}).then(r=>r.json()).then(d=>{
-        if(!d.ok){document.getElementById('login-err').textContent=d.err;return;}
-        username=d.username;
-        document.getElementById('title').classList.add('hidden');document.getElementById('avatar-screen').classList.remove('hidden');buildAvUI();
-    }).catch(()=>{document.getElementById('login-err').textContent='Server error';});
+
+function showMP(){
+    var u=document.getElementById('login-user').value.trim();
+    if(!u){document.getElementById('login-err').textContent='Enter your name first';return;}
+    username=u;
+    document.getElementById('mp-box').style.display='flex';
 }
-function saveGame(){if(!username)return;fetch('/api/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:username,lv:P.lv,money:P.money,xp:P.xp,world:curWorld,avatar:avatar})}).catch(()=>{});}
+
+function createRoom(){
+    // Generate a random 6-char code
+    var code=Math.random().toString(36).substr(2,6).toUpperCase();
+    roomCode=code;mpMode='host';
+    document.getElementById('room-status').textContent='Your code: '+code+' — Share it! Waiting for player...';
+    // Connect to WebSocket and wait
+    connectWS(function(){
+        wsConn.send(JSON.stringify({action:'create_room',code:code,username:username}));
+    });
+}
+
+function joinRoom(){
+    var code=document.getElementById('join-code').value.trim().toUpperCase();
+    if(!code||code.length<4){document.getElementById('room-status').textContent='Enter a valid code';return;}
+    roomCode=code;mpMode='join';
+    document.getElementById('room-status').textContent='Joining '+code+'...';
+    connectWS(function(){
+        wsConn.send(JSON.stringify({action:'join_room',code:code,username:username}));
+    });
+}
+
+function connectWS(onOpen){
+    var proto=location.protocol==='https:'?'wss':'ws';
+    var wsUrl=proto+'://'+location.host;
+    if(wsConn&&wsConn.readyState===WebSocket.OPEN){onOpen();return;}
+    wsConn=new WebSocket(wsUrl);
+    wsConn.onopen=function(){onOpen();};
+    wsConn.onmessage=function(e){
+        var d=JSON.parse(e.data);
+        if(d.type==='room_ready'){
+            document.getElementById('room-status').textContent='Player joined! Starting...';
+            setTimeout(function(){
+                document.getElementById('title').classList.add('hidden');
+                document.getElementById('avatar-screen').classList.remove('hidden');
+                buildAvUI();
+            },800);
+        }
+        else if(d.type==='room_joined'){
+            document.getElementById('room-status').textContent='Joined! Loading...';
+            setTimeout(function(){
+                document.getElementById('title').classList.add('hidden');
+                document.getElementById('avatar-screen').classList.remove('hidden');
+                buildAvUI();
+            },800);
+        }
+        else if(d.type==='room_error'){
+            document.getElementById('room-status').textContent='Error: '+d.msg;
+        }
+        else if(d.type==='fighter_state'&&phase==='playing'){
+            // Update remote player position
+        }
+        else if(d.type==='take_damage'&&phase==='playing'){
+            P.hp-=d.damage;spawnP(P.x,P.y+20,'#ff4444',3,120);if(P.hp<=0)die();updHUD();
+        }
+        else if(d.type==='opponent_left'&&phase==='playing'){
+            msg('Opponent left the game');
+        }
+    };
+    wsConn.onerror=function(){document.getElementById('room-status').textContent='Connection error';};
+}
+
+function login(){goSolo();}  // fallback alias
+function register(){goSolo();} // fallback alias
+function saveGame(){
+    if(!username)return;
+    try{localStorage.setItem('mesh3_save',JSON.stringify({username:username,lv:P.lv,money:P.money,xp:P.xp,world:curWorld,avatar:avatar}));}catch(e){}
+}
+function loadSave(){
+    try{var s=localStorage.getItem('mesh3_save');if(s){var d=JSON.parse(s);if(d.username)username=d.username;if(d.lv)P.lv=d.lv;if(d.money)P.money=d.money;if(d.xp)P.xp=d.xp;if(d.world)curWorld=d.world;if(d.avatar)Object.assign(avatar,d.avatar);}}catch(e){}
+}
 
 // === GAMEPAD (PS5/PS4) ===
 var gpActive=false;
@@ -311,6 +379,6 @@ function draw(){
 // === LOOP ===
 function loop(){var now=performance.now();dt=Math.min((now-lt)/1000,.05);lt=now;time+=dt;pollGamepad();update();draw();updHUD();requestAnimationFrame(loop);}
 
-init();
-return{goAvatar:goAvatar,play:play,toggleShop:toggleShop,buy:buy,login:login,register:register,togglePVP:togglePVP,pvpFight:pvpFight,closePVP:closePVP};
+init();loadSave();
+return{goAvatar:goAvatar,play:play,toggleShop:toggleShop,buy:buy,login:login,register:register,togglePVP:togglePVP,pvpFight:pvpFight,closePVP:closePVP,goSolo:goSolo,showMP:showMP,createRoom:createRoom,joinRoom:joinRoom};
 })();

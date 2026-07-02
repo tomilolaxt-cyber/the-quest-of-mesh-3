@@ -99,6 +99,35 @@ wss.on('connection', (ws) => {
             console.log(`[+] ${username} connected`);
         }
 
+        else if (action === 'create_room') {
+            const code = data.code || '';
+            if (!code) return;
+            // Store room with host waiting
+            rooms[code] = { host: ws, guest: null, code };
+            ws.send(JSON.stringify({ type: 'waiting', msg: 'Room created: ' + code }));
+            console.log(`[ROOM] ${data.username} created room ${code}`);
+        }
+
+        else if (action === 'join_room') {
+            const code = (data.code || '').toUpperCase();
+            const room = rooms[code];
+            if (!room) {
+                ws.send(JSON.stringify({ type: 'room_error', msg: 'Room not found: ' + code }));
+                return;
+            }
+            if (room.guest) {
+                ws.send(JSON.stringify({ type: 'room_error', msg: 'Room is full' }));
+                return;
+            }
+            room.guest = ws;
+            roomId = code;
+            // Tell host
+            sendTo(room.host, { type: 'room_ready', opponent: data.username || 'Guest', room: code });
+            // Tell guest
+            ws.send(JSON.stringify({ type: 'room_joined', opponent: playerNames.get(room.host) || 'Host', room: code }));
+            console.log(`[ROOM] ${data.username} joined room ${code}`);
+        }
+
         else if (action === 'find_random') {
             if (!waitingPlayers.includes(ws)) {
                 waitingPlayers.push(ws);

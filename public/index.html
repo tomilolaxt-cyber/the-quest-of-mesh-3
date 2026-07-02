@@ -12,15 +12,22 @@
 <div id="title" class="screen">
     <h1>QUEST OF MESH 3</h1>
     <p class="sub">Ruler of Worlds</p>
-    <p class="sub2">You have the Mesh. Now conquer everything.</p>
     <div style="display:flex;flex-direction:column;gap:8px;align-items:center;width:260px;">
-        <input type="text" id="login-user" placeholder="Username" style="width:100%;padding:9px;background:rgba(255,255,255,.05);border:1px solid #444;border-radius:6px;color:#fff;font-size:13px;text-align:center;">
-        <input type="password" id="login-pass" placeholder="Password" style="width:100%;padding:9px;background:rgba(255,255,255,.05);border:1px solid #444;border-radius:6px;color:#fff;font-size:13px;text-align:center;">
+        <input type="text" id="login-user" placeholder="Enter your name" maxlength="16" autocomplete="off" style="width:100%;padding:10px;background:rgba(255,255,255,.06);border:1px solid #555;border-radius:8px;color:#fff;font-size:14px;text-align:center;">
         <div id="login-err" style="color:#f44;font-size:10px;min-height:14px;"></div>
-        <button class="btn" onclick="Game.login()" style="width:100%">LOG IN</button>
-        <button class="btn" onclick="Game.register()" style="width:100%;background:linear-gradient(135deg,#44ffaa,#00aa66);font-size:13px;padding:10px;">CREATE ACCOUNT</button>
+        <button class="btn" onclick="Game.goSolo()" style="width:100%">⚔️ SOLO PLAY</button>
+        <button class="btn" onclick="Game.showMP()" style="width:100%;background:linear-gradient(135deg,#44ffaa,#00aa66);">🌐 MULTIPLAYER</button>
     </div>
-    <p style="color:#444;font-size:9px;margin-top:12px;">PS5/PS4 controller supported | Press 9 for PVP</p>
+    <!-- Multiplayer options (hidden initially) -->
+    <div id="mp-box" style="display:none;flex-direction:column;gap:6px;align-items:center;width:260px;margin-top:10px;">
+        <button class="btn" onclick="Game.createRoom()" style="width:100%;background:linear-gradient(135deg,#ffaa00,#cc6600);">CREATE ROOM (get code)</button>
+        <div style="display:flex;gap:6px;width:100%;">
+            <input type="text" id="join-code" placeholder="Enter room code" maxlength="6" autocomplete="off" style="flex:1;padding:9px;background:rgba(255,255,255,.06);border:1px solid #555;border-radius:8px;color:#fff;font-size:14px;text-align:center;text-transform:uppercase;">
+            <button class="btn" onclick="Game.joinRoom()" style="padding:9px 16px;font-size:13px;">JOIN</button>
+        </div>
+        <div id="room-status" style="color:#ffaa00;font-size:11px;min-height:16px;text-align:center;"></div>
+    </div>
+    <p style="color:#444;font-size:9px;margin-top:14px;">PS5/PS4 controller supported</p>
 </div>
 
 <div id="avatar-screen" class="screen hidden">
