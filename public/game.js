@@ -146,9 +146,13 @@ function connectWS(onOpen){
             document.getElementById('room-status').textContent='Error: '+d.msg;
         }
         else if(d.type==='player_pos'&&phase==='playing'){
-            // Update remote player's position
             if(!remotePlayer)remotePlayer={x:200,y:0,facing:1,attacking:false,name:d.name||'Player 2',avatar:d.avatar||{}};
-            remotePlayer.x=d.x;remotePlayer.y=d.y;remotePlayer.facing=d.facing;remotePlayer.attacking=d.attacking;remotePlayer.name=d.name||remotePlayer.name;remotePlayer.avatar=d.avatar||remotePlayer.avatar;
+            var groundY=H-60-52; // same ground reference as local player
+            remotePlayer.x=d.x;
+            remotePlayer.y=groundY+(d.yOff||0);
+            remotePlayer.facing=d.facing;remotePlayer.attacking=d.attacking;
+            remotePlayer.name=d.name||remotePlayer.name;
+            remotePlayer.avatar=d.avatar||remotePlayer.avatar;
         }
         else if(d.type==='player_attack'&&phase==='playing'){
             // Remote player attacked — show effect near their position
@@ -324,7 +328,9 @@ function update(){
     posSendTimer+=dt;
     if(posSendTimer>0.05&&wsConn&&wsConn.readyState===WebSocket.OPEN){
         posSendTimer=0;
-        wsConn.send(JSON.stringify({action:'player_pos',x:Math.round(P.x),y:Math.round(P.y),facing:P.facing,attacking:P.attacking,name:username,avatar:avatar,room:roomCode}));
+        // Send Y relative to ground so different screen sizes align
+        var groundY=H-60-P.h;
+        wsConn.send(JSON.stringify({action:'player_pos',x:Math.round(P.x),yOff:Math.round(P.y-groundY),facing:P.facing,attacking:P.attacking,name:username,avatar:avatar,room:roomCode}));
     }
 }
 
